@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>To-Do App</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; min-height: 100vh; padding: 30px 16px; color: #333; }
+
+  h1 { text-align: center; font-size: 1.6rem; margin-bottom: 24px; color: #444; letter-spacing: 0.5px; }
+
+  .container { max-width: 560px; margin: 0 auto; }
+
+  /* Add Task Form */
+  .form-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    margin-bottom: 24px;
+  }
+  .form-card h2 { font-size: 1rem; margin-bottom: 14px; color: #555; }
+  input[type="text"], textarea {
+    width: 100%; padding: 10px 12px; border: 1.5px solid #ddd;
+    border-radius: 8px; font-size: 0.95rem; font-family: inherit;
+    transition: border 0.2s; outline: none; resize: none;
+  }
+  input[type="text"]:focus, textarea:focus { border-color: #6c63ff; }
+  textarea { height: 80px; margin-top: 10px; }
+  .add-btn {
+    margin-top: 12px; width: 100%; padding: 11px;
+    background: #6c63ff; color: #fff; border: none;
+    border-radius: 8px; font-size: 0.95rem; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .add-btn:hover { background: #574fd6; }
+
+  /* Task List */
+  .section-title { font-size: 0.85rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .task-list { display: flex; flex-direction: column; gap: 10px; min-height: 10px; }
+
+  .task-card {
+    background: #fff; border-radius: 10px; padding: 14px 16px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+    display: flex; align-items: flex-start; gap: 12px;
+    cursor: grab; transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    user-select: none;
+  }
+  .task-card:active { cursor: grabbing; }
+  .task-card.dragging { opacity: 0.45; transform: scale(0.98); }
+
+  .task-card input[type="checkbox"] { margin-top: 3px; accent-color: #6c63ff; width: 17px; height: 17px; flex-shrink: 0; cursor: pointer; }
+  .task-content { flex: 1; }
+  .task-title { font-weight: 600; font-size: 0.97rem; }
+  .task-desc { font-size: 0.85rem; color: #777; margin-top: 3px; line-height: 1.4; }
+  .task-card.done .task-title,
+  .task-card.done .task-desc { text-decoration: line-through; color: #bbb; }
+
+  /* Empty state */
+  .empty { text-align: center; color: #bbb; font-size: 0.9rem; padding: 20px 0; }
+
+  /* Trash Zone */
+  .trash-zone {
+    margin-top: 28px; border: 2.5px dashed #ddd;
+    border-radius: 12px; padding: 22px;
+    text-align: center; color: #bbb; font-size: 0.9rem;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .trash-zone.over { background: #fff0f0; border-color: #e55; color: #e55; }
+  .trash-icon { font-size: 1.8rem; }
+
+  /* Completed count */
+  .stats { font-size: 0.82rem; color: #aaa; text-align: right; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📝 My To-Do List</h1>
+
+  <!-- Add Task Form -->
+  <div class="form-card">
+    <h2>Add a New Task</h2>
+    <input type="text" id="taskTitle" placeholder="Task title..." maxlength="80">
+    <textarea id="taskDesc" placeholder="Task description (optional)..."></textarea>
+    <button class="add-btn" onclick="addTask()">+ Add Task</button>
+  </div>
+
+  <!-- Task List -->
+  <div class="section-title">Your Tasks</div>
+  <div class="stats" id="stats"></div>
+  <div class="task-list" id="taskList">
+    <div class="empty" id="emptyMsg">No tasks yet. Add one above!</div>
+  </div>
+
+  <!-- Trash Drop Zone -->
+  <div class="trash-zone" id="trashZone"
+    ondragover="onTrashOver(event)"
+    ondragleave="onTrashLeave()"
+    ondrop="onTrashDrop(event)">
+    <div class="trash-icon">🗑️</div>
+    <div>Drag a task here to delete it</div>
+  </div>
+</div>
+
+<script>
+  let tasks = [];
+  let dragId = null;
+
+  function uid() { return '_' + Math.random().toString(36).slice(2, 9); }
+
+  function addTask() {
+    const title = document.getElementById('taskTitle').value.trim();
+    const desc = document.getElementById('taskDesc').value.trim();
+    if (!title) { document.getElementById('taskTitle').focus(); return; }
+    tasks.push({ id: uid(), title, desc, done: false });
+    document.getElementById('taskTitle').value = '';
+    document.getElementById('taskDesc').value = '';
+    render();
+  }
+
+  function toggleDone(id) {
+    const t = tasks.find(t => t.id === id);
+    if (t) { t.done = !t.done; render(); }
+  }
+
+  function render() {
+    const list = document.getElementById('taskList');
+    const empty = document.getElementById('emptyMsg');
+    const stats = document.getElementById('stats');
+    list.innerHTML = '';
+
+    if (tasks.length === 0) {
+      list.appendChild(Object.assign(document.createElement('div'), { className: 'empty', textContent: 'No tasks yet. Add one above!' }));
+      stats.textContent = '';
+      return;
+    }
+
+    const done = tasks.filter(t => t.done).length;
+    stats.textContent = `${done} of ${tasks.length} completed`;
+
+    tasks.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'task-card' + (t.done ? ' done' : '');
+      card.draggable = true;
+      card.dataset.id = t.id;
+
+      card.addEventListener('dragstart', e => {
+        dragId = t.id;
+        setTimeout(() => card.classList.add('dragging'), 0);
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        dragId = null;
+      });
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = t.done;
+      cb.addEventListener('change', () => toggleDone(t.id));
+
+      const content = document.createElement('div');
+      content.className = 'task-content';
+
+      const titleEl = document.createElement('div');
+      titleEl.className = 'task-title';
+      titleEl.textContent = t.title;
+
+      content.appendChild(titleEl);
+
+      if (t.desc) {
+        const descEl = document.createElement('div');
+        descEl.className = 'task-desc';
+        descEl.textContent = t.desc;
+        content.appendChild(descEl);
+      }
+
+      card.appendChild(cb);
+      card.appendChild(content);
+      list.appendChild(card);
+    });
+  }
+
+  function onTrashOver(e) {
+    e.preventDefault();
+    document.getElementById('trashZone').classList.add('over');
+  }
+  function onTrashLeave() {
+    document.getElementById('trashZone').classList.remove('over');
+  }
+  function onTrashDrop(e) {
+    e.preventDefault();
+    document.getElementById('trashZone').classList.remove('over');
+    if (dragId) {
+      tasks = tasks.filter(t => t.id !== dragId);
+      dragId = null;
+      render();
+    }
+  }
+
+  // Allow adding task with Enter key on title
+  document.getElementById('taskTitle').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTask();
+  });
+
+  render();
+</script>
+</body>
+</html>
